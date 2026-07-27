@@ -10,16 +10,31 @@ execute:
 #| message: false
 library(tidyverse)
 library(primer.data)
+library(tidymodels)
+library(broom)
+library(gt)
+library(marginaleffects)
+```
+
+```{r}
+#| cache: true
+set.seed(10)
 
 x <- shaming |> 
+  mutate(civ_engage = primary_00 + general_00 + primary_02 + general_02 + primary_04 + general_04) |> 
+  select(primary_06, treatment, sex, age, civ_engage) |> 
+  drop_na() |> 
   mutate(
     voter_class = case_when(
-      primary_00 + general_00 + primary_02 + general_02 + primary_04 + general_04 <= 2 ~ "Rarely Vote",
-      primary_00 + general_00 + primary_02 + general_02 + primary_04 + general_04 <= 4 ~ "Sometimes Vote",
+      civ_engage <= 2 ~ "Rarely Vote",
+      civ_engage <= 4 ~ "Sometimes Vote",
       TRUE ~ "Always Vote"
     ),
     voter_class = factor(voter_class, levels = c("Rarely Vote", "Sometimes Vote", "Always Vote"))
-  )
+  ) |> 
+  mutate(voted = factor(primary_06)) |> 
+  drop_na() |> 
+  slice_sample(n = 10000)
 ```
 
 ```{r}
@@ -37,4 +52,44 @@ x |>
   )
 ```
 
-Summary:
+```{r}
+#| cache: true
+fit_shaming <- logistic_reg(engine = "glm") |> 
+  fit(voted ~ age + sex + treatment*voter_class, data = x)
+```
+
+```{r}
+tidy(fit_shaming, conf.int = TRUE) |> 
+  gt() |> 
+  tab_header(
+    title = "Logistic Regression Model of Voter Turnout",
+    subtitle = "Estimating the effect of social pressure treatments and voter class"
+  ) |> 
+  tab_source_note(
+    source_note = "Data source: Gerber, Green, and Larimer (2008) Michigan Voting Experiment (primer.data)"
+  ) |> 
+  fmt_number(
+    columns = where(is.numeric),
+    decimals = 3
+  )
+```
+
+```{r}
+plot_predictions(fit_shaming, condition = c("treatment", "voter_class"), type = "prob", draw = FALSE) |> 
+  filter(group == 1) |> 
+  ggplot(aes(x = treatment, y = estimate, color = treatment)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high), size = 0.8) +
+  facet_wrap(~ voter_class) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Predicted Turnout Rate by Treatment and Voter Class",
+    subtitle = "Social pressure treatments increase turnout across all voter classes, with Neighbors having the largest effect",
+    caption = "Data source: Gerber, Green, and Larimer (2008) Michigan Voting Experiment (primer.data)",
+    x = "Treatment Group",
+    y = "Predicted Turnout"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Summary: Low voter turnout is unfortunatly very common in the United States and is a problem that people have tried solve with many approaches. Using data from the Gerber-Green-Larimer 2006 experiment, we plan to build a model that will measure the average causal effect of the Neighbors postcard, relative to no postcard, on the share of registered voters who cast a ballot in the August 2006 Michigan primary. However, there could be some inaccuracies in the model because there's no way to know if someone's decision to vote was influenced by the postcard. We modeled the Bernoulli variable of voter turnout as a logistic function of age, gender, voter class, and postcard treatment. For people who sometimes vote and got the neighbors postcard voted about 9.6 percentage than those who didn't; however, this could range from 7 to 11 percentage points. The estimate could be wrong due to some confoundedness in the treatment application. Though the treatments were randomized for each individual household, people without the same households receive the same treatment potentially introducing some bias. Additionally, there's no guarantee that this 2006 Michigan data will be transferable to Texas in 2026.
