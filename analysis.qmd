@@ -1,0 +1,40 @@
+---
+title: "Shaming"
+author: "Oluchi Nnadi"
+format: html
+execute:
+  echo: false
+---
+
+```{r}
+#| message: false
+library(tidyverse)
+library(primer.data)
+
+x <- shaming |> 
+  mutate(
+    voter_class = case_when(
+      primary_00 + general_00 + primary_02 + general_02 + primary_04 + general_04 <= 2 ~ "Rarely Vote",
+      primary_00 + general_00 + primary_02 + general_02 + primary_04 + general_04 <= 4 ~ "Sometimes Vote",
+      TRUE ~ "Always Vote"
+    ),
+    voter_class = factor(voter_class, levels = c("Rarely Vote", "Sometimes Vote", "Always Vote"))
+  )
+```
+
+```{r}
+x |> 
+  group_by(treatment, voter_class) |> 
+  summarize(mean_turnout = mean(primary_06), .groups = "drop") |> 
+  ggplot(aes(x = treatment, y = mean_turnout, fill = treatment)) +
+  geom_col() +
+  facet_wrap(~ voter_class) +
+  labs(
+    title = "Mean Turnout by Treatment and Voter Class",
+    x = "Treatment",
+    y = "Mean Turnout",
+    fill = "Treatment"
+  )
+```
+
+Summary:
